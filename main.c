@@ -26,6 +26,8 @@ unsigned long gettc();
 void settcfd(/*unsigned long*/);
 unsigned long gettt0();
 unsigned long gettt1();
+void settt0fd(/*unsigned long*/);
+void settt1fd(/*unsigned long*/);
 
 /* kernel */
 void k2u(/*short sr, long pc, short type*/);
@@ -82,8 +84,13 @@ char *argv[];
         cacr = getcacr();
         printf("cacr = %08lx\n", cacr);
 
+#if 0
         sfc = setsfc(7);
         dfc = setdfc(7);
+#else
+        sfc = setsfc(5); /* Supervisor Data Space */
+        dfc = setdfc(5); /* Supervisor Data Space */
+#endif
         printf("pre sfc,dfc = %ld,%ld\n", sfc, dfc);
         sfc = getsfc();
         dfc = getdfc();
@@ -174,6 +181,8 @@ char *argv[];
         /* SE/30 24-bit mode default table */
         if (r64lo == 0x40800050) {
             setsrpfd(p64);
+            settt0fd(0x02fd8543L); /* above 32MB,CI,R/W,Supervisor space */
+            settt1fd(0x04fb8543L); /* above 64MB,CI,R/W,Supervisor space */
         }
         /* SE/30 32-bit mode default table */
         /* switched by SwapMMUMode (A05D)  */
@@ -327,9 +336,6 @@ char *argv[];
             writephy(user_phy + (l<<2), data&rmask);
         }
         fclose(fp);
-        /*
-        writephy(user_phy + 0x400L, 0xffffffff);
-        */
 
         /* user exec */
         printf("goto user land!\n");

@@ -48,13 +48,13 @@ _setusp:
 	rts
 
 _readphy:
-	move.l	4(a7),a0	! src @ PA(sfc=7)
+	move.l	4(a7),a0	! src @ PA(sfc=7) or MMU tt0/tt1
 	moves.l	(a0),d0
 	!moves.l	([4,a7]),d0
 	rts
 _writephy:
 	move.l	8(a7),d0	! src data
-	move.l	4(a7),a0	! dst @ PA(dfc=7)
+	move.l	4(a7),a0	! dst @ PA(dfc=7) or MMU tt0/tt1
 	moves.l	d0,(a0)
 	!moves.l	d0,([4,a7])
 	rts

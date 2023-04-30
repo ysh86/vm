@@ -8,6 +8,8 @@
 	.define _settcfd
 	.define _gettt0
 	.define _gettt1
+	.define _settt0fd
+	.define _settt1fd
 
 _getcrp:
 	move.l	4(a7),a0	! arg
@@ -56,12 +58,23 @@ _gettt0:
 	.data4	0xf0170a00
 	move.l	(a7)+,d0
 	rts
-
 _gettt1:
 	move.l	d0,-(a7)	! dummy
 	! pmove.l tt1,(a7)
 	! 1111 000000 010 111 000 011 10 0000 0000
 	.data4	0xf0170e00
 	move.l	(a7)+,d0
+	rts
+_settt0fd:
+	! pmovefd.l 4(a7),tt0
+        ! 1111 000000 101 111 000 010 01 0000 0000
+	.data4	0xf02f0900
+	.data2	0x0004
+	rts
+_settt1fd:
+	! pmovefd.l 4(a7),tt1
+        ! 1111 000000 101 111 000 011 01 0000 0000
+	.data4	0xf02f0d00
+	.data2	0x0004
 	rts
 
