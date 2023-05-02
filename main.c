@@ -57,9 +57,11 @@ OSErr Gestalt(/*OSType selector, Long *response*/);
 
 #define BUF_SIZE 1048576L
 
-static unsigned long *kwork;
-static unsigned long *utable;
+static unsigned char shm[((long)32<<10)+255];
 static unsigned long *kshm_base;
+static unsigned long *kwork;
+
+static unsigned long *utable;
 
 int main(argc, argv)
 int argc;
@@ -97,7 +99,7 @@ char *argv[];
         printf("cur sfc,dfc = %ld,%ld\n", sfc, dfc);
     }
     printf("\n");
-    
+
     printf("gestalt:\n");
     {
         OSErr err = noErr;
@@ -140,6 +142,7 @@ char *argv[];
     }
     printf("\n");
 
+#if 0
     /* 1MB heap */
     {
         unsigned long ptr;
@@ -162,6 +165,11 @@ char *argv[];
     }
     kwork = (unsigned long *)mem;
     kshm_base = (unsigned long *)(((unsigned long)kwork + BUF_SIZE - ((unsigned long)1<<15)) & 0xffffff00); /* 32KB, 256 aligned */
+#else
+    /* 32KB, 256 aligned @ static */
+    kshm_base = (unsigned long *)(((unsigned long)shm + 255)&0xffffff00);
+    kwork = kshm_base + 7168;
+#endif
 
     /* MMU 030 */
     {
@@ -254,8 +262,9 @@ char *argv[];
 
     /* create user process */
     {
-        int i;
+        int i, e;
         unsigned long user_size = (unsigned long)1 << 20; /* 1MB */
+        unsigned long stack_bottom = 0;
         unsigned long user_phy;
         unsigned long entry;
         unsigned long *usp;
@@ -271,39 +280,63 @@ char *argv[];
 
         /* alloc user mem */
         user_phy = (unsigned long)utable - user_size;
+        e = 0;
+        /* LA 0-1MB: text+static+heap */
         entry = (user_phy&0xffffff00) | 1; /* early termination page descriptor */
-        writephy(&utable[0], entry);
+        writephy(&utable[e], entry);
+        e++;
+        /* LA 1-14MB: invalid */
+        stack_bottom += user_size;
+        entry = 0; /* invalid */
+        for (; e < 14; ++e) {
+            writephy(&utable[e], entry);
+            stack_bottom += user_size;
+        }
+        /* LA 14-15MB: stack */
+        entry = (user_phy&0xffffff00) | 1; /* early termination page descriptor */
+        writephy(&utable[e], entry);
+        e++;
 
-        /* shared mem */
-        entry = (unsigned long)&utable[2] | 2; /* short table descriptor */
-        writephy(&utable[1], entry);
+        /* LA 15-16MB shared mem */
+        entry = (unsigned long)&utable[e+1] | 2; /* short table descriptor */
+        writephy(&utable[e], entry);
+        e++;
         /* table B */
+        i = 0;
         entry = (unsigned long)kshm_base | 1; /* normal page descriptor */
-        writephy(&utable[2], entry);
-        for (i = 1; i < 32; ++i) {
+        writephy(&utable[e+i], entry);
+        i++;
+        for (; i < 32; ++i) {
             entry = ((unsigned long)i<<8) /*marker*/ | 0; /* invalid */
-            writephy(&utable[2+i], entry);
+            writephy(&utable[e+i], entry);
         }
 
         /* enable user memory */
-        kwork[0] = 0x00010002; /* upper limit:1, DT:2(short) */
+        kwork[0] = 0x000f0002; /* upper limit:0xf, DT:2(short) */
         kwork[1] = (unsigned long)utable & 0xfffffff0;
         setcrp(kwork);
 
         /* user stack */
-        usp = (unsigned long *)(user_size); /* LA top */
-        printf("usp top phy = 0x%08lx\n", user_phy + (unsigned long)usp);
-        writephy(user_phy + (unsigned long)(--usp), 0xdeadbeef);
-        writephy(user_phy + (unsigned long)(--usp), 0xcafebabe);
-        writephy(user_phy + (unsigned long)(--usp), (unsigned long)1<<15);    /* shm size:32KB */
-        writephy(user_phy + (unsigned long)(--usp), (unsigned long)kshm_base);/* kshm base */
-        writephy(user_phy + (unsigned long)(--usp), user_size);               /* ushm base */
+        usp = (unsigned long *)(stack_bottom + user_size); /* LA top */
+        printf("usp top phy = 0x%08lx\n", user_phy + (unsigned long)usp - stack_bottom);
+        writephy(user_phy + (unsigned long)(--usp) - stack_bottom, 0xdeadbeef);
+        writephy(user_phy + (unsigned long)(--usp) - stack_bottom, 0xcafebabe);
+        writephy(user_phy + (unsigned long)(--usp) - stack_bottom, (unsigned long)1<<15);     /* shm size:32KB */
+        writephy(user_phy + (unsigned long)(--usp) - stack_bottom, (unsigned long)kshm_base); /* kshm base */
+        writephy(user_phy + (unsigned long)(--usp) - stack_bottom, stack_bottom + user_size); /* ushm base */
 
         usp = setusp(usp);
         printf("pre usp = 0x%08lx\n", usp);
         usp = getusp();
         printf("cur usp = 0x%08lx\n", usp);
         printf("\n");
+
+        printf("----------------------------\n");
+        printf("kmain:     %08lx\n", main);
+        printf("shm:       %08lx\n", shm);
+        printf("kwork:     %08lx\n", kwork);
+        printf("kshm_base: %08lx\n", kshm_base);
+        printf("----------------------------\n");
 
         /* load user code */
         if (argc < 2) {
