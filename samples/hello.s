@@ -70,6 +70,9 @@ _umain:
 ! src/lib/other/message.c
 ! message _M = {0};
 !
+! src/kernel/proc.c CopyMess()
+! dst_m->m_source = src;
+!
 ! ---------------------------
 _exit:
 	move.l	ushm_msg,a0
@@ -81,6 +84,7 @@ _exit:
 	move.l	#0,m1p1(a0)	! dummy
 	move.l	#0,m1p2(a0)	! dummy
 	move.l	#0,m1p3(a0)	! dummy
+	nop			! wait for writing to shm
 	move.w	#3,d0		! sendrec
 	move.w	#0,d1		! to MM
 	move.l	kshm_msg,a0	! message on kshm

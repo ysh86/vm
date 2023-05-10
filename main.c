@@ -57,7 +57,8 @@ OSErr Gestalt(/*OSType selector, Long *response*/);
 
 #define BUF_SIZE 1048576L
 
-static unsigned char shm[((long)32<<10)+255];
+#define SHM_SIZE ((unsigned long)32<<10)
+static unsigned char shm[(SHM_SIZE<<1)-1];
 static unsigned long *kshm_base;
 static unsigned long *kwork;
 
@@ -87,8 +88,8 @@ char *argv[];
         printf("cacr = %08lx\n", cacr);
 
 #if 0
-        sfc = setsfc(7);
-        dfc = setdfc(7);
+        sfc = setsfc(6);
+        dfc = setdfc(6);
 #else
         sfc = setsfc(5); /* Supervisor Data Space */
         dfc = setdfc(5); /* Supervisor Data Space */
@@ -166,9 +167,10 @@ char *argv[];
     kwork = (unsigned long *)mem;
     kshm_base = (unsigned long *)(((unsigned long)kwork + BUF_SIZE - ((unsigned long)1<<15)) & 0xffffff00); /* 32KB, 256 aligned */
 #else
-    /* 32KB, 256 aligned @ static */
-    kshm_base = (unsigned long *)(((unsigned long)shm + 255)&0xffffff00);
-    kwork = kshm_base + 7168;
+    /* shm @ static, shall be aligned on a page size boundary */
+    kshm_base = (unsigned long *)(((unsigned long)shm + (SHM_SIZE-1))&0xffff8000);
+    kshm_base[0] = 1; /* syscall: exit, fail safe */
+    kwork = kshm_base + ((SHM_SIZE-4096)>>2);
 #endif
 
     /* MMU 030 */
@@ -311,7 +313,7 @@ char *argv[];
             writephy(&utable[e+i], entry);
         }
 
-        /* enable user memory */
+        /* enable user memory & flush ATC */
         kwork[0] = 0x000f0002; /* upper limit:0xf, DT:2(short) */
         kwork[1] = (unsigned long)utable & 0xfffffff0;
         setcrp(kwork);
@@ -321,7 +323,7 @@ char *argv[];
         printf("usp top phy = 0x%08lx\n", user_phy + (unsigned long)usp - stack_bottom);
         writephy(user_phy + (unsigned long)(--usp) - stack_bottom, 0xdeadbeef);
         writephy(user_phy + (unsigned long)(--usp) - stack_bottom, 0xcafebabe);
-        writephy(user_phy + (unsigned long)(--usp) - stack_bottom, (unsigned long)1<<15);     /* shm size:32KB */
+        writephy(user_phy + (unsigned long)(--usp) - stack_bottom, SHM_SIZE);
         writephy(user_phy + (unsigned long)(--usp) - stack_bottom, (unsigned long)kshm_base); /* kshm base */
         writephy(user_phy + (unsigned long)(--usp) - stack_bottom, stack_bottom + user_size); /* ushm base */
 
@@ -334,8 +336,8 @@ char *argv[];
         printf("----------------------------\n");
         printf("kmain:     %08lx\n", main);
         printf("shm:       %08lx\n", shm);
-        printf("kwork:     %08lx\n", kwork);
         printf("kshm_base: %08lx\n", kshm_base);
+        printf("kwork:     %08lx\n", kwork);
         printf("----------------------------\n");
 
         /* load user code */
@@ -366,6 +368,7 @@ char *argv[];
             printf("before: %08lx, rmask: %08lx\n", data, rmask);
             len = fread(&data, 1, sizeof(data), fp);
             printf("after : %08lx, len: %ld\n", data, len);
+            printf("write : %08lx (=after&rmask)\n", data&rmask);
             writephy(user_phy + (l<<2), data&rmask);
         }
         fclose(fp);
