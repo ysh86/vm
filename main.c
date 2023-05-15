@@ -372,12 +372,22 @@ char *argv[];
             writephy(user_phy + (l<<2), data&rmask);
         }
         fclose(fp);
-
-        /* user exec */
-        printf("goto user land!\n");
-        k2u(0x0000, 0x00000400L, 0x0000);
     }
     printf("\n");
+
+    /* user exec */
+    {
+        /* TODO: restore orig states */
+        /*
+        settt0fd(disable);
+        settt1fd(disable);
+        setsfc(sfc);
+        setdfc(dfc);
+        */
+
+        printf("goto user land!\n");
+        k2u(/* sr */ 0x0000, /* pc */ 0x00000400L, /* type */ 0x0000);
+    }
 
     free(mem);
 
